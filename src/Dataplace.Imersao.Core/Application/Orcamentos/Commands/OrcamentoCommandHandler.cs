@@ -18,8 +18,12 @@ namespace Dataplace.Imersao.Core.Application.Orcamentos.Commands
          CommandHandler,
          IRequestHandler<AdicionarOrcamentoCommand, bool>,
          IRequestHandler<FecharOrcamentoCommand, bool>,
-         IRequestHandler<AdicionarOrcamentoItemCommand, bool>
-    {
+         IRequestHandler<AdicionarOrcamentoItemCommand, bool>,
+         IRequestHandler<ReabrirOrcamentoCommand, bool>,
+         IRequestHandler<CancelarOrcamentoCommand, bool>,
+         IRequestHandler<ExcluirOrcamentoCommand, bool>,
+         IRequestHandler<AtualizarOrcamentoCommand, bool>
+    { 
         #region fields
         private Domain.Orcamentos.Repositories.IOrcamentoRepository _orcamentoRepository;
         private Domain.Orcamentos.Repositories.IOrcamentoItemRepository _orcamentoItemRepository;
@@ -104,13 +108,112 @@ namespace Dataplace.Imersao.Core.Application.Orcamentos.Commands
             AddEvent(new Orcamentos.Events.OrcamentoFechadoEvent(request.NumOcamento));
             return Commit(transactionId);
         }
+
+        public async Task<bool> Handle(ReabrirOrcamentoCommand request, CancellationToken cancellationToken)
+        {
+            var transactionId = BeginTransaction();
+            var cdEmpresa = dpLibrary05.mGenerico.SymPRM.cdempresa;
+            var cdFilial = dpLibrary05.mGenerico.SymPRM.cdfilial;
+
+            var orcamento = _orcamentoRepository.ObterOrcamento(cdEmpresa, cdFilial, request.NumOcamento);
+            if (orcamento == null)
+            {
+                NotifyErrorValidation("notFound", "orçamento não encotrado");
+                return false;
+            }
+
+            orcamento.ReabrirOrcamento();
+            if (!_orcamentoRepository.AtualizarOrcamento(orcamento))
+            {
+                NotifyErrorValidation("orcamento", "Ocoreu um problema com a persistência dos dados");
+                return false;
+            }
+
+
+            AddEvent(new Orcamentos.Events.OrcamentoReabertoEvent(request.NumOcamento));
+            return Commit(transactionId);
+        }
+
+        public async Task<bool> Handle(CancelarOrcamentoCommand request, CancellationToken cancellationToken)
+        {
+            var transactionId = BeginTransaction();
+            var cdEmpresa = dpLibrary05.mGenerico.SymPRM.cdempresa;
+            var cdFilial = dpLibrary05.mGenerico.SymPRM.cdfilial;
+
+            var orcamento = _orcamentoRepository.ObterOrcamento(cdEmpresa, cdFilial, request.NumOcamento);
+            if (orcamento == null)
+            {
+                NotifyErrorValidation("notFound", "orçamento não encotrado");
+                return false;
+            }
+
+            orcamento.CancelarOrcamento();
+            if (!_orcamentoRepository.AtualizarOrcamento(orcamento))
+            {
+                NotifyErrorValidation("orcamento", "Ocorreu um problema com a persistência dos dados");
+                return false;
+            }
+
+
+            AddEvent(new Orcamentos.Events.OrcamentoCanceladoEvent(request.NumOcamento));
+            return Commit(transactionId);
+        }
+
+        public async Task<bool> Handle(ExcluirOrcamentoCommand request, CancellationToken cancellationToken)
+        {
+            var transactionId = BeginTransaction();
+            var cdEmpresa = dpLibrary05.mGenerico.SymPRM.cdempresa;
+            var cdFilial = dpLibrary05.mGenerico.SymPRM.cdfilial;
+
+            var orcamento = _orcamentoRepository.ObterOrcamento(cdEmpresa, cdFilial, request.Item.NumOrcamento);
+            if (orcamento == null)
+            {
+                NotifyErrorValidation("notFound", "orçamento não encontrado");
+                return false;
+            }
+
+            var itens = _orcamentoItemRepository.ObterItens(cdEmpresa, cdFilial, orcamento.NumOrcamento);
+            foreach (var item in itens)
+            {
+                if(!_orcamentoItemRepository.ExcluirItem(item))
+                {
+                    NotifyErrorValidation("deleteitemerror", $"Ocorreram erros na tentativa de exclusão do item {item.Produto.CdProduto.Trim()}");
+                    return false;
+                }
+            }            
+
+            AddEvent(new Orcamentos.Events.OrcamentoExcluidoEvent(request.Item.NumOrcamento));
+            return Commit(transactionId);
+        }
+
+        public async Task<bool> Handle(AtualizarOrcamentoCommand request, CancellationToken cancellationToken)
+        {
+            var transactionId = BeginTransaction();
+            var cdEmpresa = dpLibrary05.mGenerico.SymPRM.cdempresa;
+            var cdFilial = dpLibrary05.mGenerico.SymPRM.cdfilial;
+
+            var orcamento = Orcamento.Factory.NovoOrcamento(
+                dpLibrary05.mGenerico.SymPRM.cdempresa,
+                dpLibrary05.mGenerico.SymPRM.cdfilial,
+                new OrcamentoCliente(request.Item.CdCliente),
+                new OrcamentoUsuario(request.Item.Usuario),
+                new OrcamentoVendedor(request.Item.CdVendedor),
+                new OrcamentoTabelaPreco(request.Item.CdTabela, request.Item.SqTabela ?? 0));
+                
+            if (!_orcamentoRepository.AtualizarOrcamento(orcamento))
+            {
+                NotifyErrorValidation("updateorcamentoerror", $"Ocorreram erros na tentativa de atualização do orçamento {request.Item.NumOrcamento}.");
+                return false;
+            }
+            AddEvent(new Orcamentos.Events.OrcamentoAtualizadoEvent(request.Item));
+            return Commit(transactionId);
+        }
         #endregion
 
         #region itens
         public async Task<bool> Handle(AdicionarOrcamentoItemCommand request, CancellationToken cancellationToken)
         {
             var transactionId = BeginTransaction();
-
 
             var orcamento = _orcamentoRepository.ObterOrcamento(request.Item.CdEmpresa, request.Item.CdFilial, request.Item.NumOrcamento);
             if (orcamento == null)
@@ -134,7 +237,6 @@ namespace Dataplace.Imersao.Core.Application.Orcamentos.Commands
                 return false;
             }
 
-
             var quantidade = request.Item.Quantidade;
             // cross aggreagate service
             var preco = _orcamentoService.ObterProdutoPreco(orcamento, produto);
@@ -146,8 +248,7 @@ namespace Dataplace.Imersao.Core.Application.Orcamentos.Commands
 
             var item = orcamento.AdicionarItem(produto, quantidade, preco);
 
-
-            var itemAdicionado = _orcamentoItemRepository.AdicionarItem(item); itemAdicionado
+            var itemAdicionado = _orcamentoItemRepository.AdicionarItem(item);
 
             if (itemAdicionado == null)
                 NotifyErrorValidation("database", "Ocoreu um problema com a persistência dos dados");
@@ -157,6 +258,41 @@ namespace Dataplace.Imersao.Core.Application.Orcamentos.Commands
             AddEvent(new OrcamentoItemAdicionadoEvent(request.Item));
 
             return Commit(transactionId);
+        }
+
+        public async Task<bool> Handle(ExcluirOrcamentoItemCommand request, CancellationToken cancellationToken)
+        {
+            var transactionId = BeginTransaction();
+
+            var orcamento = _orcamentoRepository.ObterOrcamento(
+                dpLibrary05.mGenerico.SymPRM.cdempresa,
+                dpLibrary05.mGenerico.SymPRM.cdfilial, request.Item.NumOrcamento);
+            if (orcamento == null)
+            {
+                NotifyErrorValidation("notFound", "Orçamento não encontrado");
+                return false;
+            }
+
+            if (orcamento.PermiteAlteracaoItem())
+            {
+                orcamento.Validation.Notifications.ToList().ForEach(val => NotifyErrorValidation(val.Property, val.Message));
+                return false;
+            }
+
+            var item = new OrcamentoItem(request.Item.CdEmpresa,
+                request.Item.CdFilial,
+                request.Item.NumOrcamento,
+                new OrcamentoProduto(request.Item.TpRegistro.ToTpRegistroEnum() ?? TpRegistroEnum.ProdutoFinal, request.Item.CdProduto),
+                request.Item.Quantidade,
+                new OrcamentoItemPrecoTotal(request.Item.PrecoTabela, request.Item.PrecoVenda)
+                );
+            if(!_orcamentoItemRepository.ExcluirItem(item))
+                NotifyErrorValidation("itemDeleted", $"Ocorreu um problema ao excluir o item {request.Item.CdProduto} - {request.Item.DsProduto}");
+
+            AddEvent(new OrcamentoItemExcluidoEvent(request.Item));
+
+            return Commit(transactionId);
+
         }
         #endregion
 
@@ -177,6 +313,7 @@ namespace Dataplace.Imersao.Core.Application.Orcamentos.Commands
         {
             return new OrcamentoVendedor("00");
         }
+
         #endregion
 
     }

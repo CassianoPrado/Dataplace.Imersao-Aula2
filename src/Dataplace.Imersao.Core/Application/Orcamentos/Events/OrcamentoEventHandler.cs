@@ -11,7 +11,9 @@ namespace Dataplace.Imersao.Core.Application.Orcamentos.Events
     internal class OrcamentoEventHandler:
          INotificationHandler<OrcamentoAdicionadoEvent>,
          INotificationHandler<OrcamentoFechadoEvent>,
-         INotificationHandler<OrcamentoItemAdicionadoEvent>
+         INotificationHandler<OrcamentoItemAdicionadoEvent>,
+         INotificationHandler<OrcamentoReabertoEvent>,
+         INotificationHandler<OrcamentoCanceladoEvent>
     {
         public Task Handle(OrcamentoAdicionadoEvent notification, CancellationToken cancellationToken)
         {
@@ -30,6 +32,22 @@ namespace Dataplace.Imersao.Core.Application.Orcamentos.Events
         }
 
         public Task Handle(OrcamentoItemAdicionadoEvent notification, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+            //notification.Item.Seq;
+        }
+
+        public Task Handle(OrcamentoReabertoEvent notification, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+            //notification.Item.Seq;
+        }
+        public Task Handle(OrcamentoCanceladoEvent notification, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+            //notification.Item.Seq;
+        }
+        public Task Handle(OrcamentoAtualizadoEvent notification, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
             //notification.Item.Seq;

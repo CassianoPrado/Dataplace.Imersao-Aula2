@@ -6,6 +6,7 @@ using Dapper;
 using Dataplace.Imersao.Core.Domain.Orcamentos.Enums;
 using Dataplace.Imersao.Core.Domain.Orcamentos.ValueObjects;
 using System.Linq;
+using System.Collections.Generic;
 
 namespace Dataplace.Imersao.Core.Infra.Data.Repositories
 {
@@ -133,7 +134,7 @@ namespace Dataplace.Imersao.Core.Infra.Data.Repositories
         public bool ExcluirItem(OrcamentoItem entity)
         {
             var sql = @"
-            DELETE FROM OrcamentoUtem
+            DELETE FROM OrcamentoItem
             WHERE CdEmpresa = ?
                 AND CdFilial = ?
                 AND NumOrcamento = ?
@@ -150,6 +151,7 @@ namespace Dataplace.Imersao.Core.Infra.Data.Repositories
                 },
                 transaction: _dataAccess.Transaction) > 0;
         }
+
         public OrcamentoItem ObterItem(string cdEmpresa, string cdFilial, int numOrcamento, int seq)
         {
             var sql = @"
@@ -181,5 +183,37 @@ namespace Dataplace.Imersao.Core.Infra.Data.Repositories
 
             return items.FirstOrDefault();
         }
+
+        public IEnumerable<OrcamentoItem> ObterItens(string cdEmpresa, string cdFilial, int numOrcamento)
+        {
+            var sql = @"
+            SELECT Seq, CdEmpresa, CdFilial, NumOrcamento, qtdproduto, stitem, tpregistro as TpProduto, cdproduto, vlvenda as PrecoTabela, vlcalculado as PrecoVenda, percaltpreco as PercAltPreco
+                FROM  
+            OrcamentoItem
+                WHERE CdEmpresa = ? AND CdFilial = ? AND NumOrcamento = ?
+            ";
+            var items = _dataAccess.Connection.Query<OrcamentoItem, OrcamentoProduto, OrcamentoItemPreco, OrcamentoItem>(sql,
+                (item, produto, preco) => {
+
+                    if (produto != null)
+                        item.DefinirProduto(produto);
+
+                    if (preco != null)
+                        item.DefinirPreco(preco);
+
+                    return item;
+                },
+                new
+                {
+                    CdEmpresa = cdEmpresa,
+                    CdFilial = cdFilial,
+                    NumOrcamento = numOrcamento
+                },
+                splitOn: "TpProduto, PrecoTabela",
+                transaction: _dataAccess.Transaction);
+
+            return items;
+        }
+
     }
 }
